@@ -482,6 +482,7 @@ bool cmdlineParse(int argc, char* argv[], honggfuzz_t* hfuzz) {
         { { "stdin_input", no_argument, NULL, 's' }, "Provide fuzzing input on STDIN, instead of " _HF_FILE_PLACEHOLDER },
         { { "mutations_per_run", required_argument, NULL, 'r' }, "Maximal number of mutations per one run (default: 6)" },
         { { "logfile", required_argument, NULL, 'l' }, "Log file" },
+        { { "corpus_evolution_file", required_argument, NULL, 'C' }, "Corpus evolution file" },
         { { "verbose", no_argument, NULL, 'v' }, "Disable ANSI console; use simple log output" },
         { { "verifier", no_argument, NULL, 'V' }, "Enable crashes verifier" },
         { { "debug", no_argument, NULL, 'd' }, "Show debug messages (level >= 4)" },
@@ -589,6 +590,9 @@ bool cmdlineParse(int argc, char* argv[], honggfuzz_t* hfuzz) {
                 break;
             case 'l':
                 logfile = optarg;
+                break;
+            case 'C':
+                snprintf(hfuzz->io.corpusEvolutionFile, sizeof(hfuzz->io.corpusEvolutionFile), "%s", optarg);
                 break;
             case 'd':
                 ll = DEBUG;

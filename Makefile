@@ -391,6 +391,8 @@ honggfuzz.o: libhfcommon/common.h libhfcommon/log.h socketfuzzer.h subproc.h
 input.o: input.h honggfuzz.h libhfcommon/util.h fuzz.h libhfcommon/common.h
 input.o: libhfcommon/files.h libhfcommon/common.h libhfcommon/log.h mangle.h
 input.o: subproc.h
+input.o: corpus.h
+corpus.o: corpus.h honggfuzz.h
 mangle.o: mangle.h honggfuzz.h libhfcommon/util.h input.h
 mangle.o: libhfcommon/common.h libhfcommon/log.h
 report.o: report.h honggfuzz.h libhfcommon/util.h sanitizers.h

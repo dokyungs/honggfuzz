@@ -65,6 +65,8 @@
 /* Size (in bytes) for report data to be stored in stack before written to file */
 #define _HF_REPORT_SIZE 32768
 
+#define _HF_MANGLE_FUNC_STR_MAX_SIZE 2048
+
 /* Perf bitmap size */
 #define _HF_PERF_BITMAP_SIZE_16M   (1024U * 1024U * 16U)
 #define _HF_PERF_BITMAP_BITSZ_MASK 0x7FFFFFFULL
@@ -207,6 +209,7 @@ typedef struct {
         char        workDir[PATH_MAX];
         const char* crashDir;
         const char* covDirNew;
+        char        corpusEvolutionFile[PATH_MAX];
         bool        saveUnique;
         size_t      dynfileqMaxSz;
         size_t      dynfileqCnt;
@@ -358,6 +361,7 @@ typedef struct {
     bool         mainWorker;
     unsigned     mutationsPerRun;
     dynfile_t*   dynfile;
+    char         mangleFuncStr[_HF_MANGLE_FUNC_STR_MAX_SIZE];
     bool         staticFileTryMore;
     uint32_t     fuzzNo;
     int          persistentSock;

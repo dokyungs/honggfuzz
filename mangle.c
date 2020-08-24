@@ -39,6 +39,25 @@
 #include "libhfcommon/log.h"
 #include "libhfcommon/util.h"
 
+static inline void clear_mangle_sequence(run_t* run) {
+    run->mangleFuncStr[0] = '\0';
+}
+
+static inline void append_mangle_sequence(run_t* run, const char *str) {
+    size_t len = strlen(run->mangleFuncStr);
+    if (len == 0 || run->mangleFuncStr[len-1] == '[') {
+        snprintf(run->mangleFuncStr, _HF_MANGLE_FUNC_STR_MAX_SIZE, "%s[", str);
+    }
+    else {
+        snprintf(run->mangleFuncStr + len, _HF_MANGLE_FUNC_STR_MAX_SIZE, "-%s[", str);
+    }
+}
+
+static inline void close_mangle_sequence(run_t* run) {
+    size_t len = strlen(run->mangleFuncStr);
+    snprintf(run->mangleFuncStr + len, _HF_MANGLE_FUNC_STR_MAX_SIZE, "]");
+}
+
 static inline size_t mangle_LenLeft(run_t* run, size_t off) {
     if (off >= run->dynfile->size) {
         LOG_F("Offset is too large: off:%zu >= len:%zu", off, run->dynfile->size);
@@ -155,6 +174,8 @@ static inline void mangle_UseValue(run_t* run, const uint8_t* val, size_t len, b
 }
 
 static void mangle_MemSwap(run_t* run, bool printable HF_ATTR_UNUSED) {
+    append_mangle_sequence(run, "MemSwap");
+
     size_t off1    = mangle_getOffSet(run);
     size_t maxlen1 = run->dynfile->size - off1;
 
@@ -170,9 +191,13 @@ static void mangle_MemSwap(run_t* run, bool printable HF_ATTR_UNUSED) {
     memcpy(tmpbuf, &run->dynfile->data[off1], len);
     memmove(&run->dynfile->data[off1], &run->dynfile->data[off2], len);
     memcpy(&run->dynfile->data[off2], tmpbuf, len);
+
+    close_mangle_sequence(run);
 }
 
 static void mangle_MemCopy(run_t* run, bool printable HF_ATTR_UNUSED) {
+    append_mangle_sequence(run, "MemCopy");
+
     size_t off = mangle_getOffSet(run);
     size_t len = mangle_getLen(run->dynfile->size - off);
 
@@ -184,9 +209,13 @@ static void mangle_MemCopy(run_t* run, bool printable HF_ATTR_UNUSED) {
     memcpy(tmpbuf, &run->dynfile->data[off], len);
 
     mangle_UseValue(run, tmpbuf, len, printable);
+
+    close_mangle_sequence(run);
 }
 
 static void mangle_Bytes(run_t* run, bool printable) {
+    append_mangle_sequence(run, "Bytes");
+
     uint16_t buf;
     if (printable) {
         util_rndBufPrintable((uint8_t*)&buf, sizeof(buf));
@@ -197,6 +226,8 @@ static void mangle_Bytes(run_t* run, bool printable) {
     /* Overwrite with random 1-2-byte values */
     size_t toCopy = util_rndGet(1, 2);
     mangle_UseValue(run, (const uint8_t*)&buf, toCopy, printable);
+
+    close_mangle_sequence(run);
 }
 
 static void mangle_ByteRepeatOverwrite(run_t* run, bool printable) {
@@ -210,8 +241,12 @@ static void mangle_ByteRepeatOverwrite(run_t* run, bool printable) {
         return;
     }
 
+    append_mangle_sequence(run, "ByteRepeatOverwrite");
+
     size_t len = mangle_getLen(maxSz);
     memset(&run->dynfile->data[destOff], run->dynfile->data[off], len);
+
+    close_mangle_sequence(run);
 }
 
 static void mangle_ByteRepeatInsert(run_t* run, bool printable) {
@@ -225,17 +260,25 @@ static void mangle_ByteRepeatInsert(run_t* run, bool printable) {
         return;
     }
 
+    append_mangle_sequence(run, "ByteRepeatInsert");
+
     size_t len = mangle_getLen(maxSz);
     len        = mangle_Inflate(run, destOff, len, printable);
     memset(&run->dynfile->data[destOff], run->dynfile->data[off], len);
+
+    close_mangle_sequence(run);
 }
 
 static void mangle_Bit(run_t* run, bool printable) {
+    append_mangle_sequence(run, "Bit");
+
     size_t off = mangle_getOffSet(run);
     run->dynfile->data[off] ^= (uint8_t)(1U << util_rndGet(0, 7));
     if (printable) {
         util_turnToPrintable(&(run->dynfile->data[off]), 1);
     }
+
+    close_mangle_sequence(run);
 }
 
 static const struct {
@@ -476,11 +519,21 @@ static const struct {
 };
 
 static void mangle_Magic(run_t* run, bool printable) {
+    append_mangle_sequence(run, "Magic");
+
     uint64_t choice = util_rndGet(0, ARRAYSIZE(mangleMagicVals) - 1);
+    size_t len = strlen(run->mangleFuncStr);
+    for (unsigned i=0; i<mangleMagicVals[choice].size; i++) {
+      snprintf(run->mangleFuncStr + len + i*2, _HF_MANGLE_FUNC_STR_MAX_SIZE, "%02X", mangleMagicVals[choice].val[i]);
+    }
     mangle_UseValue(run, mangleMagicVals[choice].val, mangleMagicVals[choice].size, printable);
+
+    close_mangle_sequence(run);
 }
 
 static void mangle_StaticDict(run_t* run, bool printable) {
+    append_mangle_sequence(run, "StaticDict");
+
     if (run->global->mutate.dictionaryCnt == 0) {
         mangle_Bytes(run, printable);
         return;
@@ -488,6 +541,8 @@ static void mangle_StaticDict(run_t* run, bool printable) {
     uint64_t choice = util_rndGet(0, run->global->mutate.dictionaryCnt - 1);
     mangle_UseValue(run, run->global->mutate.dictionary[choice].val,
         run->global->mutate.dictionary[choice].len, printable);
+
+    close_mangle_sequence(run);
 }
 
 static inline const uint8_t* mangle_FeedbackDict(run_t* run, size_t* len) {
@@ -511,6 +566,8 @@ static inline const uint8_t* mangle_FeedbackDict(run_t* run, size_t* len) {
 }
 
 static void mangle_ConstFeedbackDict(run_t* run, bool printable) {
+    append_mangle_sequence(run, "ConstFeedbackDict");
+
     size_t         len;
     const uint8_t* val = mangle_FeedbackDict(run, &len);
     if (val == NULL) {
@@ -518,17 +575,25 @@ static void mangle_ConstFeedbackDict(run_t* run, bool printable) {
         return;
     }
     mangle_UseValue(run, val, len, printable);
+
+    close_mangle_sequence(run);
 }
 
 static void mangle_MemSet(run_t* run, bool printable) {
+    append_mangle_sequence(run, "MemSet");
+
     size_t off = mangle_getOffSet(run);
     size_t len = mangle_getLen(run->dynfile->size - off);
     int    val = printable ? (int)util_rndPrintable() : (int)util_rndGet(0, UINT8_MAX);
 
     memset(&run->dynfile->data[off], val, len);
+
+    close_mangle_sequence(run);
 }
 
 static void mangle_RandomOverwrite(run_t* run, bool printable) {
+    append_mangle_sequence(run, "RandomOverwrite");
+
     size_t off = mangle_getOffSet(run);
     size_t len = mangle_getLen(run->dynfile->size - off);
     if (printable) {
@@ -536,9 +601,13 @@ static void mangle_RandomOverwrite(run_t* run, bool printable) {
     } else {
         util_rndBuf(&run->dynfile->data[off], len);
     }
+
+    close_mangle_sequence(run);
 }
 
 static void mangle_RandomInsert(run_t* run, bool printable) {
+    append_mangle_sequence(run, "RandomInsert");
+
     size_t off = mangle_getOffSet(run);
     size_t len = mangle_getLen(run->dynfile->size - off);
 
@@ -549,6 +618,8 @@ static void mangle_RandomInsert(run_t* run, bool printable) {
     } else {
         util_rndBuf(&run->dynfile->data[off], len);
     }
+
+    close_mangle_sequence(run);
 }
 
 static inline void mangle_AddSubWithRange(
@@ -609,6 +680,8 @@ static inline void mangle_AddSubWithRange(
 }
 
 static void mangle_AddSub(run_t* run, bool printable) {
+    append_mangle_sequence(run, "AddSub");
+
     size_t off = mangle_getOffSet(run);
 
     /* 1,2,4,8 */
@@ -636,33 +709,47 @@ static void mangle_AddSub(run_t* run, bool printable) {
     }
 
     mangle_AddSubWithRange(run, off, varLen, range, printable);
+
+    close_mangle_sequence(run);
 }
 
 static void mangle_IncByte(run_t* run, bool printable) {
+    append_mangle_sequence(run, "IncByte");
+
     size_t off = mangle_getOffSet(run);
     if (printable) {
         run->dynfile->data[off] = (run->dynfile->data[off] - 32 + 1) % 95 + 32;
     } else {
         run->dynfile->data[off] += (uint8_t)1UL;
     }
+
+    close_mangle_sequence(run);
 }
 
 static void mangle_DecByte(run_t* run, bool printable) {
+    append_mangle_sequence(run, "DecByte");
+
     size_t off = mangle_getOffSet(run);
     if (printable) {
         run->dynfile->data[off] = (run->dynfile->data[off] - 32 + 94) % 95 + 32;
     } else {
         run->dynfile->data[off] -= (uint8_t)1UL;
     }
+
+    close_mangle_sequence(run);
 }
 
 static void mangle_NegByte(run_t* run, bool printable) {
+    append_mangle_sequence(run, "NegByte");
+
     size_t off = mangle_getOffSet(run);
     if (printable) {
         run->dynfile->data[off] = 94 - (run->dynfile->data[off] - 32) + 32;
     } else {
         run->dynfile->data[off] = ~(run->dynfile->data[off]);
     }
+
+    close_mangle_sequence(run);
 }
 
 static void mangle_Expand(run_t* run, bool printable) {
@@ -674,10 +761,16 @@ static void mangle_Expand(run_t* run, bool printable) {
         len = mangle_getLen(run->global->mutate.maxInputSz - off);
     }
 
+    append_mangle_sequence(run, "Expand");
+
     mangle_Inflate(run, off, len, printable);
+
+    close_mangle_sequence(run);
 }
 
 static void mangle_Shrink(run_t* run, bool printable HF_ATTR_UNUSED) {
+    append_mangle_sequence(run, "Shrink");
+
     if (run->dynfile->size <= 2U) {
         return;
     }
@@ -697,17 +790,25 @@ static void mangle_Shrink(run_t* run, bool printable HF_ATTR_UNUSED) {
 
     mangle_Move(run, off_end, off_start, len_to_move);
     input_setSize(run, run->dynfile->size - len);
+
+    close_mangle_sequence(run);
 }
 static void mangle_ASCIINum(run_t* run, bool printable) {
+    append_mangle_sequence(run, "ASCIINum");
+
     size_t len = util_rndGet(2, 8);
 
     char buf[20];
     snprintf(buf, sizeof(buf), "%-19" PRId64, (int64_t)util_rnd64());
 
     mangle_UseValue(run, (const uint8_t*)buf, len, printable);
+
+    close_mangle_sequence(run);
 }
 
 static void mangle_ASCIINumChange(run_t* run, bool printable) {
+    append_mangle_sequence(run, "ASCIINumChange");
+
     size_t off = mangle_getOffSet(run);
 
     /* Find a digit */
@@ -751,9 +852,13 @@ static void mangle_ASCIINumChange(run_t* run, bool printable) {
 
     len = HF_MIN((size_t)snprintf(numbuf, sizeof(numbuf), "%" PRIu64, val), len);
     mangle_Overwrite(run, off, (const uint8_t*)numbuf, len, printable);
+
+    close_mangle_sequence(run);
 }
 
 static void mangle_Splice(run_t* run, bool printable) {
+    append_mangle_sequence(run, "Splice");
+
     const uint8_t* buf;
     size_t         sz = input_getRandomInputAsBuf(run, &buf);
     if (!sz) {
@@ -764,6 +869,8 @@ static void mangle_Splice(run_t* run, bool printable) {
     size_t remoteOff = mangle_getLen(sz) - 1;
     size_t len       = mangle_getLen(sz - remoteOff);
     mangle_UseValue(run, &buf[remoteOff], len, printable);
+
+    close_mangle_sequence(run);
 }
 
 static void mangle_Resize(run_t* run, bool printable) {
@@ -810,6 +917,8 @@ static void mangle_Resize(run_t* run, bool printable) {
 }
 
 void mangle_mangleContent(run_t* run, int speed_factor) {
+    clear_mangle_sequence(run);
+
     static void (*const mangleFuncs[])(run_t * run, bool printable) = {
         /* Every *Insert or Expand expands file, so add more Shrink's */
         mangle_Shrink,

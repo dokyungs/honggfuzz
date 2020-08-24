@@ -42,6 +42,7 @@
 #include "libhfcommon/util.h"
 #include "mangle.h"
 #include "subproc.h"
+#include "corpus.h"
 
 void input_setSize(run_t* run, size_t sz) {
     if (run->dynfile->size == sz) {
@@ -383,6 +384,10 @@ void input_addDynamicInput(run_t* run) {
         ATOMIC_POST_INC(run->dynfile->src->refs);
     }
     input_generateFileName(dynfile, NULL, dynfile->path);
+
+    if (run->global->io.corpusEvolutionFile != NULL) {
+        corpus_writeEvolutionVector(run->global->io.corpusEvolutionFile, dynfile, run->dynfile, run->mangleFuncStr);
+    }
 
     MX_SCOPED_RWLOCK_WRITE(&run->global->mutex.dynfileq);
 
